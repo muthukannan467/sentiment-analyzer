@@ -50,7 +50,7 @@ def get_gemini_analysis(low_text, high_text, api_key):
     
     **Recommendation**: One clear actionable step to improve the product.
 
-    Make sure percentages add up to 100%. Be specific and analytical.
+    Make sure percentages add up to 100%. Be specific and analytical. Provide COMPLETE response.
     """
     
     payload = {
@@ -58,8 +58,8 @@ def get_gemini_analysis(low_text, high_text, api_key):
             "parts": [{"text": prompt}]
         }],
         "generationConfig": {
-            "temperature": 0.3,
-            "maxOutputTokens": 2500  # CHANGED: 1500 → 2500 (allows longer response)
+            "temperature": 0.3
+            # REMOVED: maxOutputTokens completely - let Gemini decide
         }
     }
     
@@ -72,10 +72,6 @@ def get_gemini_analysis(low_text, high_text, api_key):
     
     result = response.json()
     text_response = result["candidates"][0]["content"]["parts"][0]["text"]
-    
-    # CHANGED: Don't remove all ** (keep markdown formatting for better readability)
-    # Only clean if needed
-    # text_response = re.sub(r'\*\*', '', text_response)  ← REMOVED or commented
     
     return text_response
 
@@ -112,7 +108,7 @@ if uploaded_file:
             low_reviews = df[df['rating'] <= 2]['review_text'].dropna().astype(str).tolist()
             high_reviews = df[df['rating'] >= 3]['review_text'].dropna().astype(str).tolist()
             
-            # CHANGED: Limit to 10 samples each (reduced from 30 to save tokens)
+            # Take first 10 samples each (to save input tokens)
             low_sample = low_reviews[:10]
             high_sample = high_reviews[:10]
             
