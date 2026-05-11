@@ -28,7 +28,7 @@ st.markdown("""
 def get_gemini_analysis(low_text, high_text, api_key):
     """Send reviews to Gemini and get analysis"""
     
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}"
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash:generateContent?key={api_key}"
     
     prompt = f"""
     Analyze these customer reviews for a product:
