@@ -1,6 +1,9 @@
 import streamlit as st
 import pandas as pd
-import google.generativeai as genai
+import requests
+import json
+import re
+import time
 
 # --- Page Config ---
 st.set_page_config(page_title="Review Insight AI", page_icon="📈")
@@ -21,61 +24,146 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Gemini Setup ---
-genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-model = genai.GenerativeModel('gemini-2.0-flash')
-
-def get_gemini_analysis(low_text, high_text):
+# --- Function to Call Gemini API ---
+def get_gemini_analysis(low_text, high_text, api_key):
+    """Send reviews to Gemini and get analysis"""
+    
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key={api_key}"
+    
     prompt = f"""
     Analyze these customer reviews for a product:
     
     LOW RATINGS (1-2 Stars):
-    {low_text}
+    {low_text[:4000]}
     
     HIGH RATINGS (3-5 Stars):
-    {high_text}
+    {high_text[:4000]}
 
-    Return:
-    1. **Executive Summary**: 2-sentence overview.
-    2. **Top 3 Factors Causing Low Ratings**: List 3 factors with [Percentage]% and a brief explanation.
-    3. **Recommendation**: One clear actionable step.
+    Return your analysis in this exact format:
+
+    1. **Executive Summary**: (2-sentence overview of why customers leave low ratings)
+    
+    2. **Top 3 Factors Causing Low Ratings**:
+    - Factor 1: [XX%] - explanation
+    - Factor 2: [XX%] - explanation
+    - Factor 3: [XX%] - explanation
+    
+    3. **Recommendation**: One clear actionable step to improve the product.
+
+    Make sure percentages add up to 100%. Be specific and analytical.
     """
-    response = model.generate_content(prompt)
-    return response.text
+    
+    payload = {
+        "contents": [{
+            "parts": [{"text": prompt}]
+        }],
+        "generationConfig": {
+            "temperature": 0.3,
+            "maxOutputTokens": 1500
+        }
+    }
+    
+    headers = {"Content-Type": "application/json"}
+    
+    response = requests.post(url, headers=headers, json=payload)
+    
+    if response.status_code != 200:
+        raise Exception(f"API Error: {response.status_code} - {response.text}")
+    
+    result = response.json()
+    text_response = result["candidates"][0]["content"]["parts"][0]["text"]
+    
+    # Clean markdown
+    text_response = re.sub(r'\*\*', '', text_response)
+    
+    return text_response
 
 # --- UI ---
 st.title("🚀 Review Insight Analyzer")
+st.caption("Upload your customer reviews CSV to find out why customers give low ratings")
 
 uploaded_file = st.file_uploader("Upload your Review CSV", type="csv")
 
 if uploaded_file:
-    # Added encoding='latin1' to handle the special characters in your sample
-    df = pd.read_csv(uploaded_file, encoding='latin1')
+    # Try different encodings to handle special characters
+    try:
+        df = pd.read_csv(uploaded_file, encoding='utf-8')
+    except:
+        uploaded_file.seek(0)
+        df = pd.read_csv(uploaded_file, encoding='latin1')
     
+    # Check required columns
     if 'rating' in df.columns and 'review_text' in df.columns:
-        st.success(f"Loaded {len(df)} reviews.")
+        st.success(f"✅ Loaded {len(df)} reviews")
         
-        if st.button("Analyze Differences"):
-            # Filtering
+        # Show preview
+        with st.expander("Preview Data"):
+            st.dataframe(df.head())
+        
+        # Show stats
+        low_count = len(df[df['rating'] <= 2])
+        high_count = len(df[df['rating'] >= 3])
+        st.info(f"📊 Found {low_count} low ratings (1-2 stars) vs {high_count} high ratings (3-5 stars)")
+        
+        if st.button("🔍 Analyze Differences", type="primary"):
+            
+            # Get reviews
             low_reviews = df[df['rating'] <= 2]['review_text'].dropna().astype(str).tolist()
             high_reviews = df[df['rating'] >= 3]['review_text'].dropna().astype(str).tolist()
+            
+            # Limit to 30 samples each to avoid token limits
+            low_sample = low_reviews[:30]
+            high_sample = high_reviews[:30]
+            
+            low_text = "\n- ".join(low_sample)
+            high_text = "\n- ".join(high_sample)
             
             # Pulse Animation
             placeholder = st.empty()
             with placeholder.container():
                 st.markdown('<div class="pulsing-circle">AI</div>', unsafe_allow_html=True)
-                st.markdown("<p style='text-align:center;'>Analyzing patterns...</p>", unsafe_allow_html=True)
+                progress_bar = st.progress(0)
+                for i in range(100):
+                    time.sleep(0.01)
+                    progress_bar.progress(i + 1, text=f"Analyzing patterns... {i+1}%")
             
-            # API Call
-            analysis = get_gemini_analysis("\n- ".join(low_reviews), "\n- ".join(high_reviews))
-            placeholder.empty()
-            
-            # Results
-            st.markdown("### 📊 Analysis Results")
-            st.markdown(analysis)
-            
-            st.divider()
-            st.write("📋 **Copy for Slack:**")
-            st.code(f"*Review Analysis Report*\n\n{analysis}", language="markdown")
+            try:
+                # API Call
+                api_key = st.secrets["GEMINI_API_KEY"]
+                analysis = get_gemini_analysis(low_text, high_text, api_key)
+                placeholder.empty()
+                
+                # Results
+                st.markdown("### 📊 Analysis Results")
+                
+                # Display in a nice container
+                st.markdown(analysis)
+                
+                st.divider()
+                
+                # Copy for Slack button
+                if st.button("📋 Copy for Slack"):
+                    st.toast("✅ Analysis copied to clipboard!", icon="✅")
+                    st.code(analysis, language="markdown")
+                    
+            except Exception as e:
+                placeholder.empty()
+                st.error(f"Analysis failed: {str(e)}")
     else:
         st.error("CSV must have 'rating' and 'review_text' columns.")
+else:
+    st.info("👆 Upload a CSV file with 'rating' (1-5) and 'review_text' columns")
+    
+    # Show example format
+    with st.expander("📋 Expected CSV Format"):
+        st.markdown("""
+        Your CSV should have these columns:
+        - **rating**: 1 to 5 stars
+        - **review_text**: The customer's review text
+        
+        Example:
+        | rating | review_text |
+        |--------|-------------|
+        | 1 | "Battery dies too fast" |
+        | 5 | "Amazing product!" |
+        """)
