@@ -41,14 +41,14 @@ def get_gemini_analysis(low_text, high_text, api_key):
 
     Return your analysis in this exact format:
 
-    1. **Executive Summary**: (2-sentence overview of why customers leave low ratings)
+    **Executive Summary**: (2-sentence overview of why customers leave low ratings)
     
-    2. **Top 3 Factors Causing Low Ratings**:
+    **Top 3 Factors Causing Low Ratings**:
     - Factor 1: [XX%] - explanation
     - Factor 2: [XX%] - explanation
     - Factor 3: [XX%] - explanation
     
-    3. **Recommendation**: One clear actionable step to improve the product.
+    **Recommendation**: One clear actionable step to improve the product.
 
     Make sure percentages add up to 100%. Be specific and analytical.
     """
@@ -59,7 +59,7 @@ def get_gemini_analysis(low_text, high_text, api_key):
         }],
         "generationConfig": {
             "temperature": 0.3,
-            "maxOutputTokens": 1500
+            "maxOutputTokens": 2500  # CHANGED: 1500 → 2500 (allows longer response)
         }
     }
     
@@ -73,8 +73,9 @@ def get_gemini_analysis(low_text, high_text, api_key):
     result = response.json()
     text_response = result["candidates"][0]["content"]["parts"][0]["text"]
     
-    # Clean markdown
-    text_response = re.sub(r'\*\*', '', text_response)
+    # CHANGED: Don't remove all ** (keep markdown formatting for better readability)
+    # Only clean if needed
+    # text_response = re.sub(r'\*\*', '', text_response)  ← REMOVED or commented
     
     return text_response
 
@@ -111,9 +112,9 @@ if uploaded_file:
             low_reviews = df[df['rating'] <= 2]['review_text'].dropna().astype(str).tolist()
             high_reviews = df[df['rating'] >= 3]['review_text'].dropna().astype(str).tolist()
             
-            # Limit to 30 samples each to avoid token limits
-            low_sample = low_reviews[:30]
-            high_sample = high_reviews[:30]
+            # CHANGED: Limit to 10 samples each (reduced from 30 to save tokens)
+            low_sample = low_reviews[:10]
+            high_sample = high_reviews[:10]
             
             low_text = "\n- ".join(low_sample)
             high_text = "\n- ".join(high_sample)
